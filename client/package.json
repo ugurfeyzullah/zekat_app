@@ -1,0 +1,95 @@
+{
+  "name": "zekat-app-client",
+  "version": "1.0.0",
+  "description": "Cross-platform Zakat tracking client for web, desktop, and mobile",
+  "author": "Zakat Tracker Team",
+  "main": "public/electron.js",
+  "private": true,
+  "proxy": "http://localhost:5000",
+  "homepage": "./",
+  "dependencies": {
+    "@capacitor/core": "^7.4.0",
+    "xlsx": "^0.18.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "axios": "^1.4.0",
+    "react-router-dom": "^6.12.0",
+    "react-scripts": "5.0.1"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "electron-start": "wait-on tcp:3000 && electron .",
+    "electron-dev": "concurrently \"npm run start\" \"npm run electron-start\"",
+    "electron-build": "npm run build && electron-builder",
+    "capacitor-add-android": "npx cap add android",
+    "capacitor-add-ios": "npx cap add ios",
+    "capacitor-sync": "npm run build && npx cap sync",
+    "capacitor-open-android": "npx cap open android",
+    "capacitor-open-ios": "npx cap open ios",
+    "capacitor-build-android": "npm run build && npx cap sync android",
+    "capacitor-build-ios": "npm run build && npx cap sync ios"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.0",
+    "concurrently": "^8.2.2",
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.zekatapp.app",
+    "productName": "Zakat Tracker",
+    "files": [
+      "build/**/*",
+      "node_modules/**/*",
+      "public/electron.js",
+      "public/preload.js"
+    ],
+    "directories": {
+      "buildResources": "public"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

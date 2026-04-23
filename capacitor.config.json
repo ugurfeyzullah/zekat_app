@@ -1,0 +1,20 @@
+{
+  "appId": "com.zekatapp.app",
+  "appName": "Zakat Tracker",
+  "webDir": "build",
+  "server": {
+    "url": "http://localhost:5000",
+    "cleartext": true
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "App": {
+      "exitOnBackButton": false
+    }
+  },
+  "ios": {
+    "contentInset": "automatic"
+  }
+}

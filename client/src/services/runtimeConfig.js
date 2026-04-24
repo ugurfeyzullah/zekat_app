@@ -1,5 +1,6 @@
 const API_BASE_STORAGE_KEY = 'zakat_tracker_api_base_url_v1';
 const DEFAULT_LOCAL_API_BASE_URL = 'http://127.0.0.1:5000';
+const DEFAULT_CLOUD_API_BASE_URL = 'https://zekatapp-production.up.railway.app';
 
 const trimTrailingSlash = (value) => value.replace(/\/+$/, '');
 
@@ -71,11 +72,12 @@ export const getApiBaseUrl = () => {
     return '';
   }
 
-  // In packaged desktop/mobile mode, use the local backend by default.
-  // A remote backend can still be configured via REACT_APP_API_BASE_URL,
+  // In packaged desktop/mobile mode, default to the production cloud backend
+  // so Electron/mobile builds can sync out of the box.
+  // This can still be overridden via REACT_APP_API_BASE_URL,
   // window.__ZAKAT_API_BASE_URL, ?apiBase=, or localStorage key.
   if (protocol === 'file:' || protocol === 'capacitor:') {
-    return DEFAULT_LOCAL_API_BASE_URL;
+    return sanitizeBaseUrl(DEFAULT_CLOUD_API_BASE_URL) || DEFAULT_LOCAL_API_BASE_URL;
   }
 
   // Default to same-origin; if no backend exists, callers can fall back to local mode.

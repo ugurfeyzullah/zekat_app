@@ -295,7 +295,7 @@ const TRANSLATIONS = {
 
 const PAYMENT_CURRENCY_OPTIONS = ['EUR', 'USD', 'TRY', 'GBP', 'AED', 'SAR', 'PKR', 'INR', 'CAD', 'AUD', 'XAU'];
 const DEFAULT_BASE_CURRENCY = 'EUR';
-const BASE_CURRENCY_OPTIONS = PAYMENT_CURRENCY_OPTIONS.filter((currencyCode) => currencyCode !== 'XAU');
+const BASE_CURRENCY_OPTIONS = PAYMENT_CURRENCY_OPTIONS;
 
 const QUICK_PANEL = {
   ACCOUNT: 'account',
@@ -1488,7 +1488,7 @@ function App() {
                       <select value={normalizedBaseCurrency} onChange={(event) => setBaseCurrency(normalizeBaseCurrency(event.target.value))}>
                         {BASE_CURRENCY_OPTIONS.map((currencyCode) => (
                           <option key={currencyCode} value={currencyCode}>
-                            {currencyCode}
+                            {currencyCode === 'XAU' ? t.xauLabel : currencyCode}
                           </option>
                         ))}
                       </select>

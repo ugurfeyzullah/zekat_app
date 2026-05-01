@@ -13,6 +13,35 @@ const CLOUD_SYNC_DEBOUNCE_MS = 1500;
 const ZAKAT_RATE = 0.025;
 const NISAB_GOLD_GRAMS = 87.48;
 const TROY_OUNCE_GRAMS = 31.1034768;
+const GOLD24_CURRENCY_CODE = 'XAU';
+const SILVER_CURRENCY_CODE = 'XAG';
+
+const QURAN_AYAH_OPTIONS = [
+  {
+    reference: '94:5',
+    ar: 'فَإِنَّ مَعَ الْعُسْرِ يُسْرًا',
+    en: 'Indeed, with hardship comes ease.',
+    tr: 'Suphesiz zorlukla beraber bir kolaylik vardir.'
+  },
+  {
+    reference: '2:286',
+    ar: 'لَا يُكَلِّفُ اللَّهُ نَفْسًا إِلَّا وُسْعَهَا',
+    en: 'Allah does not burden a soul beyond what it can bear.',
+    tr: 'Allah hic kimseye gucunun yeteceginden fazlasini yuklemez.'
+  },
+  {
+    reference: '13:28',
+    ar: 'أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ',
+    en: 'Surely in the remembrance of Allah hearts find peace.',
+    tr: 'Dikkat edin, kalpler ancak Allah’i anmakla huzur bulur.'
+  },
+  {
+    reference: '65:3',
+    ar: 'وَمَنْ يَتَوَكَّلْ عَلَى اللَّهِ فَهُوَ حَسْبُهُ',
+    en: 'Whoever puts trust in Allah, He is sufficient for him.',
+    tr: 'Kim Allah’a tevekkul ederse O ona yeter.'
+  }
+];
 
 const ISLAMIC_MONTHS = [
   { en: 'Muharram', tr: 'Muharrem', ar: 'المحرم' },
@@ -112,7 +141,12 @@ const TRANSLATIONS = {
     importedSummary: (wealthCount, paymentCount, fileName, warningMessage) =>
       `Imported ${wealthCount} wealth rows and ${paymentCount} payment rows from ${fileName}.${warningMessage}`,
     importFailed: (message) => `Import failed: ${message}`,
-    xauLabel: 'XAU (Gold grams)',
+    exportExcel: 'Export Data to Excel (.xlsx)',
+    exportSuccess: (fileName) => `Exported to ${fileName}.`,
+    exportFailed: (message) => `Export failed: ${message}`,
+    loggedUser: 'Logged user',
+    guestUser: 'Guest',
+    xauLabel: '24K Gold (gram)',
     wealthTypeLabels: {
       BASE_CASH: 'Cash (Base Currency)',
       EUR_CASH: 'Euro',
@@ -193,7 +227,12 @@ const TRANSLATIONS = {
     importedSummary: (wealthCount, paymentCount, fileName, warningMessage) =>
       `${fileName} dosyasından ${wealthCount} varlık satırı ve ${paymentCount} ödeme satırı aktarıldı.${warningMessage}`,
     importFailed: (message) => `İçe aktarma başarısız: ${message}`,
-    xauLabel: 'XAU (Altın gram)',
+    exportExcel: 'Excel Disa Aktar (.xlsx)',
+    exportSuccess: (fileName) => `${fileName} dosyasina disa aktarildi.`,
+    exportFailed: (message) => `Disa aktarma basarisiz: ${message}`,
+    loggedUser: 'Giris yapan kullanici',
+    guestUser: 'Misafir',
+    xauLabel: '24 Ayar Gram Altin',
     wealthTypeLabels: {
       BASE_CASH: 'Nakit (Temel Para Birimi)',
       EUR_CASH: 'Euro',
@@ -274,7 +313,12 @@ const TRANSLATIONS = {
     importedSummary: (wealthCount, paymentCount, fileName, warningMessage) =>
       `تم استيراد ${wealthCount} صف ثروة و${paymentCount} صف دفعة من ${fileName}.${warningMessage}`,
     importFailed: (message) => `فشل الاستيراد: ${message}`,
-    xauLabel: 'XAU (غرام ذهب)',
+    exportExcel: 'Export Data to Excel (.xlsx)',
+    exportSuccess: (fileName) => `Exported to ${fileName}.`,
+    exportFailed: (message) => `Export failed: ${message}`,
+    loggedUser: 'Logged user',
+    guestUser: 'Guest',
+    xauLabel: '24K Gold (gram)',
     wealthTypeLabels: {
       BASE_CASH: 'نقد (العملة الأساسية)',
       EUR_CASH: 'يورو',
@@ -310,6 +354,17 @@ const toNumber = (value) => {
 const normalizeBaseCurrency = (value) => {
   const normalized = String(value || '').trim().toUpperCase();
   return BASE_CURRENCY_OPTIONS.includes(normalized) ? normalized : DEFAULT_BASE_CURRENCY;
+};
+
+const normalizePaymentCurrency = (value) => {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'GA24' || normalized === 'GOLD24' || normalized === '24K') {
+    return GOLD24_CURRENCY_CODE;
+  }
+  if (normalized === GOLD24_CURRENCY_CODE || normalized === SILVER_CURRENCY_CODE) {
+    return normalized;
+  }
+  return normalized;
 };
 
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -525,7 +580,8 @@ const normalizeBoardState = (state) => {
 
   const paymentRows = paymentRowsSource.map((row) => ({
     ...row,
-    cycleKey: row.cycleKey || activeCycleKey
+    cycleKey: row.cycleKey || activeCycleKey,
+    currency: normalizePaymentCurrency(row.currency || baseCurrency)
   }));
 
   return {
@@ -590,10 +646,46 @@ function App() {
   );
   const [cloudSyncStatusLevel, setCloudSyncStatusLevel] = useState('info');
   const skipNextCloudSaveRef = useRef(false);
+  const [selectedAyahIndex] = useState(() => Math.floor(Math.random() * QURAN_AYAH_OPTIONS.length));
 
   const t = useMemo(() => TRANSLATIONS[language] || TRANSLATIONS.en, [language]);
   const isRtl = language === 'ar';
   const normalizedBaseCurrency = normalizeBaseCurrency(baseCurrency);
+  const gold24Label = t.xauLabel || TRANSLATIONS.en.xauLabel;
+  const exportExcelLabel = t.exportExcel || TRANSLATIONS.en.exportExcel;
+  const exportSuccessMessage =
+    typeof t.exportSuccess === 'function' ? t.exportSuccess : TRANSLATIONS.en.exportSuccess;
+  const exportFailedMessage =
+    typeof t.exportFailed === 'function' ? t.exportFailed : TRANSLATIONS.en.exportFailed;
+  const loggedUserLabel = t.loggedUser || TRANSLATIONS.en.loggedUser;
+  const guestUserLabel = t.guestUser || TRANSLATIONS.en.guestUser;
+  const selectedAyah = QURAN_AYAH_OPTIONS[selectedAyahIndex] || QURAN_AYAH_OPTIONS[0];
+  const ayahText = useMemo(() => {
+    if (!selectedAyah) {
+      return '';
+    }
+    if (language === 'ar' && selectedAyah.ar) {
+      return selectedAyah.ar;
+    }
+    if (language === 'tr' && selectedAyah.tr) {
+      return selectedAyah.tr;
+    }
+    return selectedAyah.en || '';
+  }, [language, selectedAyah]);
+  const getCurrencyDisplayLabel = useCallback(
+    (currencyCode) => {
+      const normalized = normalizePaymentCurrency(currencyCode || '').toUpperCase();
+      if (normalized === GOLD24_CURRENCY_CODE) {
+        return gold24Label;
+      }
+      return normalized;
+    },
+    [gold24Label]
+  );
+  const baseCurrencyDisplayLabel = useMemo(
+    () => getCurrencyDisplayLabel(normalizedBaseCurrency),
+    [getCurrencyDisplayLabel, normalizedBaseCurrency]
+  );
   const cycleMeta = useMemo(() => buildCycleMeta(zakatMonth, language), [language, zakatMonth]);
   const persistedState = useMemo(
     () => ({
@@ -933,20 +1025,21 @@ function App() {
         return 0;
       }
 
-      const currencyCode = String(sourceCurrency || '').trim().toUpperCase();
+      const currencyCode = normalizePaymentCurrency(sourceCurrency);
       if (!currencyCode) {
         return amountValue;
       }
 
       // Treat precious metals in payment rows as grams so values like 0.5 Altin
       // convert correctly even when the FX feed doesn't include XAU/XAG.
-      if (currencyCode === 'XAU' || currencyCode === 'XAG') {
+      if (currencyCode === GOLD24_CURRENCY_CODE || currencyCode === SILVER_CURRENCY_CODE) {
         if (currencyCode === normalizedBaseCurrency) {
           return amountValue;
         }
 
-        const fallbackUsdPerGram = currencyCode === 'XAU' ? 65 : 0.8;
-        const commodityRate = toNumber(activeRates?.[currencyCode]);
+        const fallbackUsdPerGram = currencyCode === GOLD24_CURRENCY_CODE ? 65 : 0.8;
+        const commodityCode = currencyCode === GOLD24_CURRENCY_CODE ? GOLD24_CURRENCY_CODE : SILVER_CURRENCY_CODE;
+        const commodityRate = toNumber(activeRates?.[commodityCode]);
         if (commodityRate > 0) {
           const oneOunceInBase = 1 / commodityRate;
           const pricePerGramInBase = oneOunceInBase / TROY_OUNCE_GRAMS;
@@ -974,6 +1067,11 @@ function App() {
         return null;
       }
 
+      if (normalizedBaseCurrency === GOLD24_CURRENCY_CODE) {
+        const ounces = amountValue / quoteRate;
+        return ounces * TROY_OUNCE_GRAMS;
+      }
+
       return amountValue / quoteRate;
     },
     [normalizedBaseCurrency]
@@ -986,6 +1084,10 @@ function App() {
 
   const getMetalPricePerGramInBase = useCallback(
     (metalCode, fallbackUsdPerGram) => {
+      if (metalCode === GOLD24_CURRENCY_CODE && normalizedBaseCurrency === GOLD24_CURRENCY_CODE) {
+        return 1;
+      }
+
       const commodityRate = toNumber(rates?.[metalCode]);
       if (commodityRate > 0) {
         const oneOunceInBase = 1 / commodityRate;
@@ -1007,11 +1109,11 @@ function App() {
   );
 
   const goldPricePerGramInBase = useMemo(
-    () => getMetalPricePerGramInBase('XAU', 65),
+    () => getMetalPricePerGramInBase(GOLD24_CURRENCY_CODE, 65),
     [getMetalPricePerGramInBase]
   );
   const silverPricePerGramInBase = useMemo(
-    () => getMetalPricePerGramInBase('XAG', 0.8),
+    () => getMetalPricePerGramInBase(SILVER_CURRENCY_CODE, 0.8),
     [getMetalPricePerGramInBase]
   );
   const getWealthTypeLabel = useCallback(
@@ -1217,22 +1319,22 @@ function App() {
           [cycleMeta.key]: carryForward
         };
       });
-      setYearNote(t.yearRolledCarry(carryForward, normalizedBaseCurrency));
+      setYearNote(t.yearRolledCarry(carryForward, baseCurrencyDisplayLabel));
     } else {
       setYearNote(t.yearRolledNoCarry);
     }
 
     setActiveCycleKey(cycleMeta.key);
-  }, [cycleMeta.key, activeCycleKey, remainingAmount, normalizedBaseCurrency, t]);
+  }, [cycleMeta.key, activeCycleKey, remainingAmount, baseCurrencyDisplayLabel, t]);
 
   const missingRateItems = useMemo(() => {
     const missingWealth = wealthComputedRows.filter((row) => row.missingRate).map((row) => row.typeLabel);
     const missingPayments = paymentComputedRows
       .filter((row) => row.missingRate)
-      .map((row) => (row.currency || '').toUpperCase());
+      .map((row) => getCurrencyDisplayLabel(row.currency || ''));
 
     return Array.from(new Set([...missingWealth, ...missingPayments].filter(Boolean)));
-  }, [wealthComputedRows, paymentComputedRows]);
+  }, [wealthComputedRows, paymentComputedRows, getCurrencyDisplayLabel]);
 
   const sourceLabel = useMemo(() => {
     if (rateSource === 'server') {
@@ -1247,14 +1349,23 @@ function App() {
     return t.sourceUnknown;
   }, [rateSource, t]);
 
-  const formatMoney = (value) => `${toNumber(value).toFixed(2)} ${normalizedBaseCurrency}`;
+  const formatMoney = (value) => `${toNumber(value).toFixed(2)} ${baseCurrencyDisplayLabel}`;
 
   const updateWealthRow = (id, field, value) => {
     setWealthRows((previous) => previous.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
   };
 
   const updatePaymentRow = (id, field, value) => {
-    setPaymentRows((previous) => previous.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
+    setPaymentRows((previous) =>
+      previous.map((row) =>
+        row.id === id
+          ? {
+              ...row,
+              [field]: field === 'currency' ? normalizePaymentCurrency(value) : value
+            }
+          : row
+      )
+    );
   };
 
   const addPaymentRow = () => {
@@ -1325,6 +1436,67 @@ function App() {
     }
   };
 
+  const handleExcelExport = () => {
+    const now = new Date();
+    const datePart = now.toISOString().slice(0, 10);
+    const fileName = `zakat-tracker-${datePart}.xlsx`;
+    const baseCurrencyLabel = baseCurrencyDisplayLabel;
+
+    try {
+      const workbook = XLSX.utils.book_new();
+
+      const summaryRows = [
+        { Metric: 'Active Cycle', Value: cycleMeta.label },
+        { Metric: 'Base Currency', Value: baseCurrencyLabel },
+        { Metric: 'Total Wealth', Value: totalWealthInBase.toFixed(2) },
+        { Metric: 'Nisab Threshold', Value: nisabThreshold.toFixed(2) },
+        { Metric: 'Nisab Met', Value: nisabMet ? 'Yes' : 'No' },
+        { Metric: 'Zakat Duty (2.5%)', Value: zakatDutyCurrentYear.toFixed(2) },
+        { Metric: 'Carry from Previous Year', Value: carryInAmount.toFixed(2) },
+        { Metric: 'Total Paid This Year', Value: totalPaidCurrentCycle.toFixed(2) },
+        { Metric: 'Remaining', Value: remainingAmount.toFixed(2) }
+      ];
+
+      const wealthRowsForExport = wealthComputedRows.map((row) => ({
+        Type: row.typeLabel,
+        Amount: toNumber(row.amount),
+        ConvertedInBase: row.missingRate ? '' : Number(row.convertedAmount.toFixed(2)),
+        BaseCurrency: baseCurrencyLabel,
+        Note: row.note || ''
+      }));
+
+      const paymentRowsForExport = paymentComputedRows.map((row) => ({
+        Cycle: row.cycleKey,
+        PaidTo: row.paidTo || '',
+        Date: normalizePaymentDate(row.date),
+        Amount: toNumber(row.amount),
+        Currency: getCurrencyDisplayLabel(row.currency),
+        ConvertedInBase: row.missingRate ? '' : Number(row.convertedAmount.toFixed(2)),
+        BaseCurrency: baseCurrencyLabel
+      }));
+
+      const allPaymentRowsForExport = paymentRows.map((row) => ({
+        Cycle: row.cycleKey,
+        PaidTo: row.paidTo || '',
+        Date: normalizePaymentDate(row.date),
+        Amount: toNumber(row.amount),
+        Currency: getCurrencyDisplayLabel(row.currency)
+      }));
+
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(wealthRowsForExport), 'Wealth');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(paymentRowsForExport), 'Payments');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(allPaymentRowsForExport), 'AllPayments');
+
+      XLSX.writeFile(workbook, fileName);
+      setImportStatusLevel('info');
+      setImportStatus(exportSuccessMessage(fileName));
+    } catch (error) {
+      setImportStatusLevel('error');
+      setImportStatus(exportFailedMessage(error?.message || 'Unknown error'));
+    }
+  };
+
   const handleExcelImport = async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -1376,7 +1548,7 @@ function App() {
               paidTo: row.paidTo,
               date: normalizePaymentDate(row.date || getTodayDateString()),
               amount: String(row.amount),
-              currency: row.currency
+              currency: normalizePaymentCurrency(row.currency)
             })
           );
           return [...otherCycles, ...importedRows];
@@ -1409,7 +1581,12 @@ function App() {
         <div className="header-top">
           <div className="header-title-wrap">
             <h1>{t.appTitle}</h1>
-            <p>{t.appSubtitle}</p>
+            <p className="header-ayah">
+              {ayahText} ({selectedAyah.reference})
+            </p>
+            <p className="header-user">
+              {loggedUserLabel}: {cloudSession?.username || guestUserLabel}
+            </p>
           </div>
 
           <div className="header-actions">
@@ -1549,7 +1726,7 @@ function App() {
                       <select value={normalizedBaseCurrency} onChange={(event) => setBaseCurrency(normalizeBaseCurrency(event.target.value))}>
                         {BASE_CURRENCY_OPTIONS.map((currencyCode) => (
                           <option key={currencyCode} value={currencyCode}>
-                            {currencyCode === 'XAU' ? t.xauLabel : currencyCode}
+                            {getCurrencyDisplayLabel(currencyCode)}
                           </option>
                         ))}
                       </select>
@@ -1579,6 +1756,12 @@ function App() {
                     <div className="field">
                       <label>{t.importExcel}</label>
                       <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} />
+                    </div>
+
+                    <div className="field button-field">
+                      <button className="btn secondary" type="button" onClick={handleExcelExport}>
+                        {exportExcelLabel}
+                      </button>
                     </div>
 
                     <div className="field button-field">
@@ -1623,7 +1806,7 @@ function App() {
                   <tr>
                     <th>{t.type}</th>
                     <th>{t.amount}</th>
-                    <th>{t.converted} ({normalizedBaseCurrency})</th>
+                    <th>{t.converted} ({baseCurrencyDisplayLabel})</th>
                     <th>{t.note}</th>
                     <th></th>
                   </tr>
@@ -1692,7 +1875,7 @@ function App() {
                     <th>{t.date}</th>
                     <th>{t.amount}</th>
                     <th>{t.currency}</th>
-                    <th>{t.converted} ({normalizedBaseCurrency})</th>
+                    <th>{t.converted} ({baseCurrencyDisplayLabel})</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -1721,11 +1904,11 @@ function App() {
                       <td>
                         <select value={row.currency} onChange={(event) => updatePaymentRow(row.id, 'currency', event.target.value)}>
                           {PAYMENT_CURRENCY_OPTIONS.map((currency) => (
-                            <option key={currency} value={currency}>
-                              {currency === 'XAU' ? t.xauLabel : currency}
-                            </option>
-                          ))}
-                        </select>
+                          <option key={currency} value={currency}>
+                              {getCurrencyDisplayLabel(currency)}
+                          </option>
+                        ))}
+                      </select>
                       </td>
                       <td className={row.missingRate ? 'missing' : ''}>
                         {row.missingRate ? t.missingRate : row.convertedAmount.toFixed(2)}

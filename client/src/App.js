@@ -806,67 +806,6 @@ function App() {
   }, [openQuickPanel]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-
-    const userAgent = window.navigator?.userAgent || '';
-    const isIos = /iPhone|iPad|iPod/i.test(userAgent);
-    if (!isIos) {
-      return undefined;
-    }
-
-    const viewportMeta = document.querySelector('meta[name="viewport"]');
-    if (!viewportMeta) {
-      return undefined;
-    }
-
-    const originalViewportContent = viewportMeta.getAttribute('content') || 'width=device-width, initial-scale=1';
-
-    const normalizeViewportContent = (content) =>
-      String(content || '')
-        .split(',')
-        .map((token) => token.trim())
-        .filter(Boolean)
-        .filter(
-          (token) =>
-            !token.startsWith('maximum-scale') &&
-            !token.startsWith('minimum-scale') &&
-            !token.startsWith('user-scalable')
-        );
-
-    const limitedViewportContent = [...normalizeViewportContent(originalViewportContent), 'maximum-scale=1'].join(', ');
-    const restoredViewportContent = normalizeViewportContent(originalViewportContent).join(', ');
-
-    const isFormControl = (target) => {
-      if (!target || typeof target.tagName !== 'string') {
-        return false;
-      }
-      const tagName = target.tagName.toUpperCase();
-      return tagName === 'INPUT' || tagName === 'SELECT' || tagName === 'TEXTAREA';
-    };
-
-    const handleFocusIn = (event) => {
-      if (isFormControl(event.target)) {
-        viewportMeta.setAttribute('content', limitedViewportContent);
-      }
-    };
-
-    const handleFocusOut = () => {
-      viewportMeta.setAttribute('content', restoredViewportContent || 'width=device-width, initial-scale=1');
-    };
-
-    window.addEventListener('focusin', handleFocusIn);
-    window.addEventListener('focusout', handleFocusOut);
-
-    return () => {
-      window.removeEventListener('focusin', handleFocusIn);
-      window.removeEventListener('focusout', handleFocusOut);
-      viewportMeta.setAttribute('content', originalViewportContent);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!cloudSession?.token) {
       return undefined;
     }

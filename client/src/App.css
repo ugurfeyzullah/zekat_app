@@ -239,7 +239,7 @@ select {
   border-radius: 7px;
   border: 1px solid #cbd5e1;
   font-size: 1rem;
-  touch-action: manipulation;
+  touch-action: auto;
 }
 
 input:focus,
@@ -297,7 +297,7 @@ select:focus {
   overflow-y: auto;
   max-height: clamp(18rem, 52vh, 28rem);
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x pan-y;
+  touch-action: auto;
 }
 
 table {

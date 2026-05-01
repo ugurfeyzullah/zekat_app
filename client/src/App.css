@@ -227,7 +227,7 @@ select {
   padding: 0.55rem;
   border-radius: 7px;
   border: 1px solid #cbd5e1;
-  font-size: 0.95rem;
+  font-size: 1rem;
 }
 
 input:focus,
@@ -283,7 +283,7 @@ select:focus {
 .table-wrap {
   overflow-x: auto;
   overflow-y: auto;
-  max-height: 20rem;
+  max-height: clamp(18rem, 52vh, 28rem);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -531,7 +531,7 @@ td.missing {
   }
 
   .table-wrap {
-    max-height: 18rem;
+    max-height: clamp(16rem, 50dvh, 24rem);
   }
 
   .account-action-buttons .btn {

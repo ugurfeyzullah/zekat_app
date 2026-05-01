@@ -24,6 +24,9 @@ const createWindow = () => {
     : `file://${path.join(__dirname, '../build/index.html')}`;
 
   mainWindow.loadURL(startUrl);
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.setZoomFactor(1);
+  });
 
   if (isDev) {
     mainWindow.webContents.openDevTools();
@@ -53,9 +56,9 @@ const createMenu = () => {
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' }
+        { role: 'resetZoom', accelerator: 'CmdOrCtrl+0' },
+        { role: 'zoomIn', accelerator: 'CmdOrCtrl+=' },
+        { role: 'zoomOut', accelerator: 'CmdOrCtrl+-' }
       ]
     },
     {

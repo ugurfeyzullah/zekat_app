@@ -105,6 +105,7 @@ const TRANSLATIONS = {
     delete: 'Delete',
     missingRate: 'Missing rate',
     zakatYear: 'Zakat year',
+    addPreviousYear: 'Add previous year',
     payments: '2) Payments',
     addPaymentRow: 'Add Payment Row',
     paidTo: 'Paid to',
@@ -194,6 +195,7 @@ const TRANSLATIONS = {
     delete: 'Sil',
     missingRate: 'Kur yok',
     zakatYear: 'Zekat yılı',
+    addPreviousYear: 'Önceki yılı ekle',
     payments: '2) Ödemeler',
     addPaymentRow: 'Ödeme Satırı Ekle',
     paidTo: 'Ödenen kişi/kurum',
@@ -283,6 +285,7 @@ const TRANSLATIONS = {
     delete: 'حذف',
     missingRate: 'سعر مفقود',
     zakatYear: 'سنة الزكاة',
+    addPreviousYear: 'إضافة سنة سابقة',
     payments: '2) الدفعات',
     addPaymentRow: 'إضافة صف دفعة',
     paidTo: 'المدفوع له',
@@ -528,7 +531,7 @@ const parseCycleKey = (cycleKey) => {
   };
 };
 
-const buildCycleLabelFromKey = (cycleKey, language = 'en') => {
+const buildCycleLabelFromKey = (cycleKey, language = 'en', zakatDay = null, currentZakatMonth = null) => {
   const parsed = parseCycleKey(cycleKey);
   if (!parsed) {
     return String(cycleKey || '');
@@ -537,7 +540,12 @@ const buildCycleLabelFromKey = (cycleKey, language = 'en') => {
   const translations = TRANSLATIONS[language] || TRANSLATIONS.en;
   const suffix = parsed.kind === 'H' ? translations.cycleSuffixes.hijri : translations.cycleSuffixes.fallback;
   const gregorianYearLabel = getCycleGregorianYearLabel(parsed);
-  return `${parsed.startYear} / ${parsed.startYear + 1} (${suffix}) (${gregorianYearLabel})`;
+  const numericZakatDay = toNumber(zakatDay);
+  const numericZakatMonth = toNumber(currentZakatMonth);
+  const shouldShowDay =
+    numericZakatDay >= 1 && numericZakatDay <= 30 && parsed.month === numericZakatMonth;
+  const anchorLabel = `${getMonthName(parsed.month, language)}${shouldShowDay ? ` ${numericZakatDay}` : ''}`;
+  return `${anchorLabel}: ${parsed.startYear} / ${parsed.startYear + 1} (${suffix}) (${gregorianYearLabel})`;
 };
 
 const compareCycleKeysDesc = (firstCycleKey, secondCycleKey) => {
@@ -703,6 +711,23 @@ const isValidZakatDay = (value) => {
   const numeric = toNumber(value);
   return numeric >= 1 && numeric <= 30;
 };
+const normalizeCycleKeyList = (value) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const cycleKeys = value
+    .map((item) => String(item || '').trim())
+    .filter((item) => item && parseCycleKey(item));
+
+  return Array.from(new Set(cycleKeys));
+};
+
+const hasMeaningfulWealthRow = (row) =>
+  toNumber(row?.amount) !== 0 || Boolean(String(row?.note || '').trim());
+
+const hasMeaningfulPaymentRow = (row) =>
+  toNumber(row?.amount) !== 0 || Boolean(String(row?.paidTo || '').trim());
 
 const normalizeBoardState = (state) => {
   const source = isPlainObject(state) ? state : {};
@@ -719,6 +744,7 @@ const normalizeBoardState = (state) => {
     typeof source.selectedCycleKey === 'string' && source.selectedCycleKey.trim()
       ? source.selectedCycleKey.trim()
       : activeCycleKey;
+  const manualCycleKeys = normalizeCycleKeyList(source.manualCycleKeys);
 
   const wealthRowsSource =
     Array.isArray(source.wealthRows) && source.wealthRows.length > 0
@@ -752,6 +778,7 @@ const normalizeBoardState = (state) => {
     lastRateUpdate: source.lastRateUpdate || '',
     activeCycleKey,
     selectedCycleKey,
+    manualCycleKeys,
     carryOverByCycle:
       source.carryOverByCycle && typeof source.carryOverByCycle === 'object'
         ? source.carryOverByCycle
@@ -785,6 +812,7 @@ function App() {
   const [selectedCycleKey, setSelectedCycleKey] = useState(
     normalizedSavedState.selectedCycleKey || normalizedSavedState.activeCycleKey || initialCycleMeta.key
   );
+  const [manualCycleKeys, setManualCycleKeys] = useState(normalizedSavedState.manualCycleKeys);
   const [carryOverByCycle, setCarryOverByCycle] = useState(normalizedSavedState.carryOverByCycle);
   const [yearNote, setYearNote] = useState('');
   const [importStatus, setImportStatus] = useState('');
@@ -853,45 +881,65 @@ function App() {
   const zakatYearLabel = t.zakatYear || TRANSLATIONS.en.zakatYear;
   const viewEditCycleLabel = t.viewEditCycle || TRANSLATIONS.en.viewEditCycle;
   const selectedCycleLabel = useMemo(
-    () => buildCycleLabelFromKey(selectedCycleKey, language),
-    [selectedCycleKey, language]
+    () => buildCycleLabelFromKey(selectedCycleKey, language, zakatDay, zakatMonth),
+    [selectedCycleKey, language, zakatDay, zakatMonth]
   );
   const cycleOptions = useMemo(() => {
-    const cycleSet = new Set([cycleMeta.key, activeCycleKey, selectedCycleKey]);
-    const activeParsed = parseCycleKey(cycleMeta.key) || parseCycleKey(activeCycleKey) || parseCycleKey(selectedCycleKey);
-
-    if (activeParsed) {
-      for (let offset = -8; offset <= 1; offset += 1) {
-        cycleSet.add(buildCycleKey(activeParsed.kind, activeParsed.startYear + offset, activeParsed.month));
-      }
-    }
+    const cycleSet = new Set([cycleMeta.key]);
 
     wealthRows.forEach((row) => {
-      if (typeof row.cycleKey === 'string' && row.cycleKey.trim()) {
+      if (hasMeaningfulWealthRow(row) && typeof row.cycleKey === 'string' && row.cycleKey.trim()) {
         cycleSet.add(row.cycleKey.trim());
       }
     });
 
     paymentRows.forEach((row) => {
-      if (typeof row.cycleKey === 'string' && row.cycleKey.trim()) {
+      if (hasMeaningfulPaymentRow(row) && typeof row.cycleKey === 'string' && row.cycleKey.trim()) {
         cycleSet.add(row.cycleKey.trim());
       }
     });
 
     Object.keys(carryOverByCycle || {}).forEach((cycleKey) => {
+      if (cycleKey && toNumber(carryOverByCycle[cycleKey]) !== 0) {
+        cycleSet.add(cycleKey);
+      }
+    });
+
+    manualCycleKeys.forEach((cycleKey) => {
       if (cycleKey) {
         cycleSet.add(cycleKey);
       }
     });
+
+    if (selectedCycleKey && cycleSet.has(selectedCycleKey)) {
+      cycleSet.add(selectedCycleKey);
+    }
 
     return Array.from(cycleSet)
       .filter(Boolean)
       .sort(compareCycleKeysDesc)
       .map((cycleKey) => ({
         key: cycleKey,
-        label: buildCycleLabelFromKey(cycleKey, language)
+        label: buildCycleLabelFromKey(cycleKey, language, zakatDay, zakatMonth)
       }));
-  }, [cycleMeta.key, activeCycleKey, selectedCycleKey, wealthRows, paymentRows, carryOverByCycle, language]);
+  }, [cycleMeta.key, selectedCycleKey, wealthRows, paymentRows, carryOverByCycle, manualCycleKeys, language, zakatDay, zakatMonth]);
+  const addPreviousCycle = useCallback(() => {
+    const currentCycle = parseCycleKey(cycleMeta.key);
+    if (!currentCycle) {
+      return;
+    }
+
+    const matchingCycles = cycleOptions
+      .map((option) => parseCycleKey(option.key))
+      .filter((cycle) => cycle && cycle.kind === currentCycle.kind && cycle.month === currentCycle.month);
+    const oldestStartYear = matchingCycles.length
+      ? Math.min(...matchingCycles.map((cycle) => cycle.startYear))
+      : currentCycle.startYear;
+    const previousCycleKey = buildCycleKey(currentCycle.kind, oldestStartYear - 1, currentCycle.month);
+
+    setManualCycleKeys((previous) => (previous.includes(previousCycleKey) ? previous : [...previous, previousCycleKey]));
+    setSelectedCycleKey(previousCycleKey);
+  }, [cycleMeta.key, cycleOptions]);
   const persistedState = useMemo(
     () => ({
       activeTab,
@@ -904,6 +952,7 @@ function App() {
       lastRateUpdate,
       activeCycleKey,
       selectedCycleKey,
+      manualCycleKeys,
       carryOverByCycle,
       wealthRows,
       paymentRows
@@ -919,6 +968,7 @@ function App() {
       lastRateUpdate,
       activeCycleKey,
       selectedCycleKey,
+      manualCycleKeys,
       carryOverByCycle,
       wealthRows,
       paymentRows
@@ -932,15 +982,15 @@ function App() {
 
   useEffect(() => {
     if (!selectedCycleKey) {
-      setSelectedCycleKey(activeCycleKey);
+      setSelectedCycleKey(cycleMeta.key);
       return;
     }
 
     const hasSelectedCycle = cycleOptions.some((option) => option.key === selectedCycleKey);
     if (!hasSelectedCycle) {
-      setSelectedCycleKey(activeCycleKey);
+      setSelectedCycleKey(cycleMeta.key);
     }
-  }, [selectedCycleKey, activeCycleKey, cycleOptions]);
+  }, [selectedCycleKey, cycleMeta.key, cycleOptions]);
 
   const toggleQuickPanel = useCallback((panelKey) => {
     setOpenQuickPanel((previous) => (previous === panelKey ? null : panelKey));
@@ -962,6 +1012,7 @@ function App() {
     setLastRateUpdate(normalizedState.lastRateUpdate);
     setActiveCycleKey(normalizedState.activeCycleKey);
     setSelectedCycleKey(normalizedState.selectedCycleKey || normalizedState.activeCycleKey);
+    setManualCycleKeys(normalizedState.manualCycleKeys);
     setCarryOverByCycle(normalizedState.carryOverByCycle);
     setWealthRows(normalizedState.wealthRows);
     setPaymentRows(normalizedState.paymentRows);
@@ -1855,6 +1906,9 @@ function App() {
               </option>
             ))}
           </select>
+          <button className="btn secondary add-cycle-btn" type="button" onClick={addPreviousCycle}>
+            {t.addPreviousYear || TRANSLATIONS.en.addPreviousYear}
+          </button>
         </div>
       </nav>
 
@@ -2014,7 +2068,7 @@ function App() {
                   </div>
 
                   <p className="muted quick-panel__meta">
-                    {t.activeCycle}: {buildCycleLabelFromKey(activeCycleKey, language)} | {viewEditCycleLabel}:{' '}
+                    {t.activeCycle}: {buildCycleLabelFromKey(activeCycleKey, language, zakatDay, zakatMonth)} | {viewEditCycleLabel}:{' '}
                     {selectedCycleLabel} | {t.rateSource}: {sourceLabel} | {t.lastUpdate}: {lastRateUpdate || t.notUpdatedYet}
                   </p>
                   {yearNote && <div className="alert info">{yearNote}</div>}

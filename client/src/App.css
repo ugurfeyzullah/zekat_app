@@ -113,7 +113,7 @@ body {
   align-items: center;
   gap: 0.55rem;
   margin-left: auto;
-  min-width: min(32rem, 100%);
+  min-width: min(42rem, 100%);
 }
 
 .nav-cycle-select label {
@@ -123,7 +123,11 @@ body {
 }
 
 .nav-cycle-select select {
-  min-width: min(22rem, 100%);
+  min-width: min(25rem, 100%);
+}
+
+.add-cycle-btn {
+  white-space: nowrap;
 }
 
 .tab-btn {
@@ -540,11 +544,16 @@ td.missing {
     width: 100%;
     margin-left: 0;
     align-items: center;
+    flex-wrap: wrap;
   }
 
   .nav-cycle-select select {
-    flex: 1 1 auto;
+    flex: 1 1 16rem;
     min-width: 0;
+  }
+
+  .add-cycle-btn {
+    flex: 1 1 9rem;
   }
 
   .tab-nav {

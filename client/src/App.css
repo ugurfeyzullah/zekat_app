@@ -292,6 +292,25 @@ select:focus {
   margin-bottom: 0.75rem;
 }
 
+.panel-header-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.cycle-select-inline {
+  min-width: 15rem;
+}
+
+.cycle-select-inline label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 0.3rem;
+}
+
 .table-wrap {
   overflow-x: auto;
   overflow-y: auto;
@@ -459,6 +478,10 @@ td.missing {
   flex-direction: row-reverse;
 }
 
+.simple-page.rtl .panel-header-actions {
+  flex-direction: row-reverse;
+}
+
 .simple-page.rtl .account-action-buttons {
   flex-direction: row-reverse;
 }
@@ -497,6 +520,16 @@ td.missing {
   .panel-header-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .panel-header-actions {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .cycle-select-inline {
+    width: 100%;
+    min-width: 0;
   }
 
   .tab-nav {

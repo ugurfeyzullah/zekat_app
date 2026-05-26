@@ -103,7 +103,7 @@ const TRANSLATIONS = {
     optional: 'Optional',
     delete: 'Delete',
     missingRate: 'Missing rate',
-    payments: '2) Payments (Current Zakat Year)',
+    payments: '2) Payments (Selected Cycle)',
     addPaymentRow: 'Add Payment Row',
     paidTo: 'Paid to',
     date: 'Date',
@@ -141,6 +141,7 @@ const TRANSLATIONS = {
     importedSummary: (wealthCount, paymentCount, fileName, warningMessage) =>
       `Imported ${wealthCount} wealth rows and ${paymentCount} payment rows from ${fileName}.${warningMessage}`,
     importFailed: (message) => `Import failed: ${message}`,
+    viewEditCycle: 'View / edit cycle',
     exportExcel: 'Export Data to Excel (.xlsx)',
     exportSuccess: (fileName) => `Exported to ${fileName}.`,
     exportFailed: (message) => `Export failed: ${message}`,
@@ -189,7 +190,7 @@ const TRANSLATIONS = {
     optional: 'İsteğe bağlı',
     delete: 'Sil',
     missingRate: 'Kur yok',
-    payments: '2) Ödemeler (Mevcut Zekat Yılı)',
+    payments: '2) Odemeler (Secilen Donem)',
     addPaymentRow: 'Ödeme Satırı Ekle',
     paidTo: 'Ödenen kişi/kurum',
     date: 'Tarih',
@@ -227,6 +228,7 @@ const TRANSLATIONS = {
     importedSummary: (wealthCount, paymentCount, fileName, warningMessage) =>
       `${fileName} dosyasından ${wealthCount} varlık satırı ve ${paymentCount} ödeme satırı aktarıldı.${warningMessage}`,
     importFailed: (message) => `İçe aktarma başarısız: ${message}`,
+    viewEditCycle: 'Goruntulenecek / duzenlenecek donem',
     exportExcel: 'Excel Disa Aktar (.xlsx)',
     exportSuccess: (fileName) => `${fileName} dosyasina disa aktarildi.`,
     exportFailed: (message) => `Disa aktarma basarisiz: ${message}`,
@@ -275,7 +277,7 @@ const TRANSLATIONS = {
     optional: 'اختياري',
     delete: 'حذف',
     missingRate: 'سعر مفقود',
-    payments: '2) الدفعات (سنة الزكاة الحالية)',
+    payments: '2) الدفعات (الدورة المختارة)',
     addPaymentRow: 'إضافة صف دفعة',
     paidTo: 'المدفوع له',
     date: 'التاريخ',
@@ -313,6 +315,7 @@ const TRANSLATIONS = {
     importedSummary: (wealthCount, paymentCount, fileName, warningMessage) =>
       `تم استيراد ${wealthCount} صف ثروة و${paymentCount} صف دفعة من ${fileName}.${warningMessage}`,
     importFailed: (message) => `فشل الاستيراد: ${message}`,
+    viewEditCycle: 'عرض / تعديل الدورة',
     exportExcel: 'Export Data to Excel (.xlsx)',
     exportSuccess: (fileName) => `Exported to ${fileName}.`,
     exportFailed: (message) => `Export failed: ${message}`,
@@ -457,6 +460,64 @@ const buildCycleMeta = (zakatMonth, language = 'en') => {
   };
 };
 
+const parseCycleKey = (cycleKey) => {
+  const match = /^(H|G)-(\d{4})-(\d{1,2})$/.exec(String(cycleKey || '').trim());
+  if (!match) {
+    return null;
+  }
+
+  const startYear = Number(match[2]);
+  const month = Number(match[3]);
+  if (!Number.isFinite(startYear) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return null;
+  }
+
+  return {
+    kind: match[1],
+    startYear,
+    month
+  };
+};
+
+const buildCycleLabelFromKey = (cycleKey, language = 'en') => {
+  const parsed = parseCycleKey(cycleKey);
+  if (!parsed) {
+    return String(cycleKey || '');
+  }
+
+  const translations = TRANSLATIONS[language] || TRANSLATIONS.en;
+  const monthLabel = getMonthName(parsed.month, language);
+  const suffix = parsed.kind === 'H' ? translations.cycleSuffixes.hijri : translations.cycleSuffixes.fallback;
+  return `${monthLabel} ${parsed.startYear} / ${parsed.startYear + 1} (${suffix})`;
+};
+
+const compareCycleKeysDesc = (firstCycleKey, secondCycleKey) => {
+  const first = parseCycleKey(firstCycleKey);
+  const second = parseCycleKey(secondCycleKey);
+
+  if (first && second) {
+    if (first.startYear !== second.startYear) {
+      return second.startYear - first.startYear;
+    }
+    if (first.month !== second.month) {
+      return second.month - first.month;
+    }
+    if (first.kind !== second.kind) {
+      return first.kind === 'H' ? -1 : 1;
+    }
+    return 0;
+  }
+
+  if (first && !second) {
+    return -1;
+  }
+  if (!first && second) {
+    return 1;
+  }
+
+  return String(secondCycleKey || '').localeCompare(String(firstCycleKey || ''));
+};
+
 const createWealthRow = (overrides = {}) => ({
   id: createId(),
   type: 'BASE_CASH',
@@ -567,6 +628,10 @@ const normalizeBoardState = (state) => {
     typeof source.activeCycleKey === 'string' && source.activeCycleKey.trim()
       ? source.activeCycleKey.trim()
       : fallbackCycleKey;
+  const selectedCycleKey =
+    typeof source.selectedCycleKey === 'string' && source.selectedCycleKey.trim()
+      ? source.selectedCycleKey.trim()
+      : activeCycleKey;
 
   const wealthRows =
     Array.isArray(source.wealthRows) && source.wealthRows.length > 0
@@ -593,6 +658,7 @@ const normalizeBoardState = (state) => {
     rateSource: source.rateSource || '',
     lastRateUpdate: source.lastRateUpdate || '',
     activeCycleKey,
+    selectedCycleKey,
     carryOverByCycle:
       source.carryOverByCycle && typeof source.carryOverByCycle === 'object'
         ? source.carryOverByCycle
@@ -622,6 +688,9 @@ function App() {
   const [rateLoading, setRateLoading] = useState(false);
   const [rateError, setRateError] = useState('');
   const [activeCycleKey, setActiveCycleKey] = useState(normalizedSavedState.activeCycleKey || initialCycleMeta.key);
+  const [selectedCycleKey, setSelectedCycleKey] = useState(
+    normalizedSavedState.selectedCycleKey || normalizedSavedState.activeCycleKey || initialCycleMeta.key
+  );
   const [carryOverByCycle, setCarryOverByCycle] = useState(normalizedSavedState.carryOverByCycle);
   const [yearNote, setYearNote] = useState('');
   const [importStatus, setImportStatus] = useState('');
@@ -687,6 +756,34 @@ function App() {
     [getCurrencyDisplayLabel, normalizedBaseCurrency]
   );
   const cycleMeta = useMemo(() => buildCycleMeta(zakatMonth, language), [language, zakatMonth]);
+  const viewEditCycleLabel = t.viewEditCycle || TRANSLATIONS.en.viewEditCycle;
+  const selectedCycleLabel = useMemo(
+    () => buildCycleLabelFromKey(selectedCycleKey, language),
+    [selectedCycleKey, language]
+  );
+  const cycleOptions = useMemo(() => {
+    const cycleSet = new Set([cycleMeta.key, activeCycleKey, selectedCycleKey]);
+
+    paymentRows.forEach((row) => {
+      if (typeof row.cycleKey === 'string' && row.cycleKey.trim()) {
+        cycleSet.add(row.cycleKey.trim());
+      }
+    });
+
+    Object.keys(carryOverByCycle || {}).forEach((cycleKey) => {
+      if (cycleKey) {
+        cycleSet.add(cycleKey);
+      }
+    });
+
+    return Array.from(cycleSet)
+      .filter(Boolean)
+      .sort(compareCycleKeysDesc)
+      .map((cycleKey) => ({
+        key: cycleKey,
+        label: buildCycleLabelFromKey(cycleKey, language)
+      }));
+  }, [cycleMeta.key, activeCycleKey, selectedCycleKey, paymentRows, carryOverByCycle, language]);
   const persistedState = useMemo(
     () => ({
       activeTab,
@@ -697,6 +794,7 @@ function App() {
       rateSource,
       lastRateUpdate,
       activeCycleKey,
+      selectedCycleKey,
       carryOverByCycle,
       wealthRows,
       paymentRows
@@ -710,6 +808,7 @@ function App() {
       rateSource,
       lastRateUpdate,
       activeCycleKey,
+      selectedCycleKey,
       carryOverByCycle,
       wealthRows,
       paymentRows
@@ -720,6 +819,18 @@ function App() {
   useEffect(() => {
     persistedStateRef.current = persistedState;
   }, [persistedState]);
+
+  useEffect(() => {
+    if (!selectedCycleKey) {
+      setSelectedCycleKey(activeCycleKey);
+      return;
+    }
+
+    const hasSelectedCycle = cycleOptions.some((option) => option.key === selectedCycleKey);
+    if (!hasSelectedCycle) {
+      setSelectedCycleKey(activeCycleKey);
+    }
+  }, [selectedCycleKey, activeCycleKey, cycleOptions]);
 
   const toggleQuickPanel = useCallback((panelKey) => {
     setOpenQuickPanel((previous) => (previous === panelKey ? null : panelKey));
@@ -739,6 +850,7 @@ function App() {
     setRateSource(normalizedState.rateSource);
     setLastRateUpdate(normalizedState.lastRateUpdate);
     setActiveCycleKey(normalizedState.activeCycleKey);
+    setSelectedCycleKey(normalizedState.selectedCycleKey || normalizedState.activeCycleKey);
     setCarryOverByCycle(normalizedState.carryOverByCycle);
     setWealthRows(normalizedState.wealthRows);
     setPaymentRows(normalizedState.paymentRows);
@@ -1104,18 +1216,21 @@ function App() {
     ]
   );
 
-  const paymentsForActiveCycle = useMemo(
-    () => paymentRows.filter((row) => row.cycleKey === activeCycleKey),
-    [paymentRows, activeCycleKey]
+  const paymentsForSelectedCycle = useMemo(
+    () => paymentRows.filter((row) => row.cycleKey === selectedCycleKey),
+    [paymentRows, selectedCycleKey]
   );
 
   const paymentRateTargets = useMemo(() => {
-    const uniqueDates = Array.from(new Set(paymentsForActiveCycle.map((row) => normalizePaymentDate(row.date))));
+    const relevantRows = paymentRows.filter(
+      (row) => row.cycleKey === selectedCycleKey || row.cycleKey === activeCycleKey
+    );
+    const uniqueDates = Array.from(new Set(relevantRows.map((row) => normalizePaymentDate(row.date))));
     return uniqueDates.map((dateText) => ({
       dateText,
       key: buildPaymentRateMapKey(normalizedBaseCurrency, dateText)
     }));
-  }, [paymentsForActiveCycle, normalizedBaseCurrency]);
+  }, [paymentRows, selectedCycleKey, activeCycleKey, normalizedBaseCurrency]);
 
   useEffect(() => {
     const missingTargets = paymentRateTargets.filter((target) => !paymentDateRates[target.key]);
@@ -1171,7 +1286,7 @@ function App() {
 
   const paymentComputedRows = useMemo(
     () =>
-      paymentsForActiveCycle.map((row) => {
+      paymentsForSelectedCycle.map((row) => {
         const rowDate = normalizePaymentDate(row.date);
         const rateKey = buildPaymentRateMapKey(normalizedBaseCurrency, rowDate);
         const rowDateRates = paymentDateRates[rateKey]?.rates || rates;
@@ -1186,7 +1301,7 @@ function App() {
           missingRate: convertedAmount === null
         };
       }),
-    [paymentsForActiveCycle, normalizedBaseCurrency, paymentDateRates, rates, convertCurrencyAmountWithRates]
+    [paymentsForSelectedCycle, normalizedBaseCurrency, paymentDateRates, rates, convertCurrencyAmountWithRates]
   );
 
   useEffect(() => {
@@ -1215,7 +1330,7 @@ function App() {
     });
     previousPaymentRowCountRef.current = currentRowCount;
     return () => window.cancelAnimationFrame(frameId);
-  }, [paymentComputedRows.length, activeCycleKey]);
+  }, [paymentComputedRows.length, selectedCycleKey]);
 
   const totalWealthInBase = useMemo(
     () => wealthComputedRows.reduce((sum, row) => sum + row.convertedAmount, 0),
@@ -1236,17 +1351,39 @@ function App() {
     () => paymentComputedRows.reduce((sum, row) => sum + row.convertedAmount, 0),
     [paymentComputedRows]
   );
+  const totalPaidInActiveCycle = useMemo(
+    () =>
+      paymentRows.reduce((sum, row) => {
+        if (row.cycleKey !== activeCycleKey) {
+          return sum;
+        }
 
-  const carryInAmount = toNumber(carryOverByCycle[activeCycleKey]);
+        const rowDate = normalizePaymentDate(row.date);
+        const rateKey = buildPaymentRateMapKey(normalizedBaseCurrency, rowDate);
+        const rowDateRates = paymentDateRates[rateKey]?.rates || rates;
+        const convertedAmount = convertCurrencyAmountWithRates(
+          row.amount,
+          row.currency || normalizedBaseCurrency,
+          rowDateRates
+        );
+
+        return sum + (convertedAmount || 0);
+      }, 0),
+    [paymentRows, activeCycleKey, normalizedBaseCurrency, paymentDateRates, rates, convertCurrencyAmountWithRates]
+  );
+
+  const carryInAmount = toNumber(carryOverByCycle[selectedCycleKey]);
   const totalDutyIncludingCarry = zakatDutyCurrentYear + carryInAmount;
   const remainingAmount = totalDutyIncludingCarry - totalPaidCurrentCycle;
+  const carryInAmountForActiveCycle = toNumber(carryOverByCycle[activeCycleKey]);
+  const remainingAmountForActiveCycle = zakatDutyCurrentYear + carryInAmountForActiveCycle - totalPaidInActiveCycle;
 
   useEffect(() => {
     if (cycleMeta.key === activeCycleKey) {
       return;
     }
 
-    const carryForward = Math.max(0, remainingAmount);
+    const carryForward = Math.max(0, remainingAmountForActiveCycle);
     if (carryForward > 0) {
       setCarryOverByCycle((previous) => {
         const existing = toNumber(previous[cycleMeta.key]);
@@ -1264,7 +1401,7 @@ function App() {
     }
 
     setActiveCycleKey(cycleMeta.key);
-  }, [cycleMeta.key, activeCycleKey, remainingAmount, baseCurrencyDisplayLabel, t]);
+  }, [cycleMeta.key, activeCycleKey, remainingAmountForActiveCycle, baseCurrencyDisplayLabel, t]);
 
   const missingRateItems = useMemo(() => {
     const missingWealth = wealthComputedRows.filter((row) => row.missingRate).map((row) => row.typeLabel);
@@ -1308,7 +1445,7 @@ function App() {
   };
 
   const addPaymentRow = () => {
-    setPaymentRows((previous) => [...previous, createPaymentRow(activeCycleKey)]);
+    setPaymentRows((previous) => [...previous, createPaymentRow(selectedCycleKey)]);
   };
 
   const handleRegister = async () => {
@@ -1385,7 +1522,7 @@ function App() {
       const workbook = XLSX.utils.book_new();
 
       const summaryRows = [
-        { Metric: 'Active Cycle', Value: cycleMeta.label },
+        { Metric: 'Cycle', Value: selectedCycleLabel },
         { Metric: 'Base Currency', Value: baseCurrencyLabel },
         { Metric: 'Total Wealth', Value: totalWealthInBase.toFixed(2) },
         { Metric: 'Nisab Threshold', Value: nisabThreshold.toFixed(2) },
@@ -1481,9 +1618,9 @@ function App() {
 
       if (parsed.paymentRows.length > 0) {
         setPaymentRows((previous) => {
-          const otherCycles = previous.filter((row) => row.cycleKey !== activeCycleKey);
+          const otherCycles = previous.filter((row) => row.cycleKey !== selectedCycleKey);
           const importedRows = parsed.paymentRows.map((row) =>
-            createPaymentRow(activeCycleKey, {
+            createPaymentRow(selectedCycleKey, {
               paidTo: row.paidTo,
               date: normalizePaymentDate(row.date || getTodayDateString()),
               amount: String(row.amount),
@@ -1711,8 +1848,8 @@ function App() {
                   </div>
 
                   <p className="muted quick-panel__meta">
-                    {t.activeCycle}: {cycleMeta.label} | {t.rateSource}: {sourceLabel} | {t.lastUpdate}:{' '}
-                    {lastRateUpdate || t.notUpdatedYet}
+                    {t.activeCycle}: {buildCycleLabelFromKey(activeCycleKey, language)} | {viewEditCycleLabel}:{' '}
+                    {selectedCycleLabel} | {t.rateSource}: {sourceLabel} | {t.lastUpdate}: {lastRateUpdate || t.notUpdatedYet}
                   </p>
                   {yearNote && <div className="alert info">{yearNote}</div>}
                   {importStatus && <div className={`alert ${importStatusLevel}`}>{importStatus}</div>}
@@ -1800,10 +1937,22 @@ function App() {
 
           <section className="panel">
             <div className="panel-header-row">
-              <h2>{t.payments}</h2>
-              <button className="btn secondary" type="button" onClick={addPaymentRow}>
-                {t.addPaymentRow}
-              </button>
+              <h2>{`${t.payments} - ${selectedCycleLabel}`}</h2>
+              <div className="panel-header-actions">
+                <div className="cycle-select-inline">
+                  <label>{viewEditCycleLabel}</label>
+                  <select value={selectedCycleKey} onChange={(event) => setSelectedCycleKey(event.target.value)}>
+                    {cycleOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button className="btn secondary" type="button" onClick={addPaymentRow}>
+                  {t.addPaymentRow}
+                </button>
+              </div>
             </div>
 
             <div className="table-wrap" ref={paymentTableWrapRef}>

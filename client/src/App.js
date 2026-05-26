@@ -622,6 +622,17 @@ const isSameCyclePeriod = (firstCycleKey, secondCycleKey) => {
   return String(firstCycleKey || '') === String(secondCycleKey || '');
 };
 
+const isEarlierCyclePeriod = (candidateCycleKey, targetCycleKey) => {
+  const candidate = parseCycleKey(candidateCycleKey);
+  const target = parseCycleKey(targetCycleKey);
+
+  if (candidate && target) {
+    return candidate.kind === target.kind && candidate.startYear < target.startYear;
+  }
+
+  return compareCycleKeysAsc(candidateCycleKey, targetCycleKey) < 0;
+};
+
 const buildCanonicalCycleKey = (cycleKey, zakatMonth) => {
   const parsed = parseCycleKey(cycleKey);
   if (!parsed) {
@@ -1587,7 +1598,7 @@ function App() {
   const totalPaidInActiveCycle = useMemo(
     () =>
       paymentRows.reduce((sum, row) => {
-        if (row.cycleKey !== activeCycleKey) {
+        if (!isCycleRowInPeriod(row.cycleKey, activeCycleKey)) {
           return sum;
         }
 
@@ -1605,10 +1616,27 @@ function App() {
     [paymentRows, activeCycleKey, normalizedBaseCurrency, paymentDateRates, rates, convertCurrencyAmountWithRates]
   );
 
-  const carryInAmount = getCarryOverForCyclePeriod(carryOverByCycle, selectedCycleKey);
+  const hasPreviousRecordedCycleForSelected = useMemo(
+    () =>
+      wealthRows.some((row) => hasMeaningfulWealthRow(row) && isEarlierCyclePeriod(row.cycleKey, selectedCycleKey)) ||
+      paymentRows.some((row) => hasMeaningfulPaymentRow(row) && isEarlierCyclePeriod(row.cycleKey, selectedCycleKey)),
+    [wealthRows, paymentRows, selectedCycleKey]
+  );
+  const hasPreviousRecordedCycleForActive = useMemo(
+    () =>
+      wealthRows.some((row) => hasMeaningfulWealthRow(row) && isEarlierCyclePeriod(row.cycleKey, activeCycleKey)) ||
+      paymentRows.some((row) => hasMeaningfulPaymentRow(row) && isEarlierCyclePeriod(row.cycleKey, activeCycleKey)),
+    [wealthRows, paymentRows, activeCycleKey]
+  );
+
+  const carryInAmount = hasPreviousRecordedCycleForSelected
+    ? getCarryOverForCyclePeriod(carryOverByCycle, selectedCycleKey)
+    : 0;
   const totalDutyIncludingCarry = zakatDutyCurrentYear + carryInAmount;
   const remainingAmount = totalDutyIncludingCarry - totalPaidCurrentCycle;
-  const carryInAmountForActiveCycle = getCarryOverForCyclePeriod(carryOverByCycle, activeCycleKey);
+  const carryInAmountForActiveCycle = hasPreviousRecordedCycleForActive
+    ? getCarryOverForCyclePeriod(carryOverByCycle, activeCycleKey)
+    : 0;
   const remainingAmountForActiveCycle = zakatDutyForActiveCycle + carryInAmountForActiveCycle - totalPaidInActiveCycle;
 
   useEffect(() => {
@@ -2311,10 +2339,12 @@ function App() {
                 <span>{t.zakatDuty}</span>
                 <strong>{formatMoney(zakatDutyCurrentYear)}</strong>
               </div>
-              <div className="summary-item">
-                <span>{t.carryFromPrevYear}</span>
-                <strong>{formatMoney(carryInAmount)}</strong>
-              </div>
+              {hasPreviousRecordedCycleForSelected && (
+                <div className="summary-item">
+                  <span>{t.carryFromPrevYear}</span>
+                  <strong>{formatMoney(carryInAmount)}</strong>
+                </div>
+              )}
               <div className="summary-item">
                 <span>{t.totalPaidThisYear}</span>
                 <strong>{formatMoney(totalPaidCurrentCycle)}</strong>

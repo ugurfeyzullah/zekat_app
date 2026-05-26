@@ -359,7 +359,15 @@ const QUICK_PANEL = {
 };
 
 const toNumber = (value) => {
-  const parsed = Number(value);
+  const normalizedValue =
+    typeof value === 'string'
+      ? value
+          .trim()
+          .replace(/\s/g, '')
+          .replace(/\./g, value.includes(',') ? '' : '.')
+          .replace(',', '.')
+      : value;
+  const parsed = Number(normalizedValue);
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
@@ -936,6 +944,10 @@ function App() {
   const selectedCycleLabel = useMemo(
     () => buildCycleLabelFromKey(selectedCycleKey, language, zakatDay, zakatMonth),
     [selectedCycleKey, language, zakatDay, zakatMonth]
+  );
+  const selectedCycleWriteKey = useMemo(
+    () => buildCanonicalCycleKey(selectedCycleKey || cycleMeta.key, zakatMonth),
+    [selectedCycleKey, cycleMeta.key, zakatMonth]
   );
   const cycleOptions = useMemo(() => {
     const cycleMap = new Map();
@@ -1720,8 +1732,14 @@ function App() {
     );
   };
 
+  const addWealthRow = () => {
+    setSelectedCycleKey(selectedCycleWriteKey);
+    setWealthRows((previous) => [...previous, createWealthRow(selectedCycleWriteKey)]);
+  };
+
   const addPaymentRow = () => {
-    setPaymentRows((previous) => [...previous, createPaymentRow(selectedCycleKey)]);
+    setSelectedCycleKey(selectedCycleWriteKey);
+    setPaymentRows((previous) => [...previous, createPaymentRow(selectedCycleWriteKey)]);
   };
 
   const handleRegister = async () => {
@@ -1882,9 +1900,9 @@ function App() {
 
       if (parsed.wealthRows.length > 0) {
         setWealthRows((previous) => {
-          const otherCycles = previous.filter((row) => !isCycleRowInPeriod(row.cycleKey, selectedCycleKey));
+          const otherCycles = previous.filter((row) => !isCycleRowInPeriod(row.cycleKey, selectedCycleWriteKey));
           const importedRows = parsed.wealthRows.map((row) =>
-            createWealthRow(selectedCycleKey, {
+            createWealthRow(selectedCycleWriteKey, {
               type: row.type,
               amount: String(row.amount),
               note: row.note || t.importedFromExcel
@@ -1896,9 +1914,9 @@ function App() {
 
       if (parsed.paymentRows.length > 0) {
         setPaymentRows((previous) => {
-          const otherCycles = previous.filter((row) => !isCycleRowInPeriod(row.cycleKey, selectedCycleKey));
+          const otherCycles = previous.filter((row) => !isCycleRowInPeriod(row.cycleKey, selectedCycleWriteKey));
           const importedRows = parsed.paymentRows.map((row) =>
-            createPaymentRow(selectedCycleKey, {
+            createPaymentRow(selectedCycleWriteKey, {
               paidTo: row.paidTo,
               date: normalizePaymentDate(row.date || getTodayDateString()),
               amount: String(row.amount),
@@ -2178,7 +2196,7 @@ function App() {
               <button
                 className="btn secondary"
                 type="button"
-                onClick={() => setWealthRows((prev) => [...prev, createWealthRow(selectedCycleKey)])}
+                onClick={addWealthRow}
               >
                 {t.addWealthRow}
               </button>
@@ -2209,11 +2227,10 @@ function App() {
                       </td>
                       <td>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={row.amount}
                           onChange={(event) => updateWealthRow(row.id, 'amount', event.target.value)}
-                          step="0.01"
-                          min="0"
                         />
                       </td>
                       <td className={row.missingRate ? 'missing' : ''}>
@@ -2278,11 +2295,10 @@ function App() {
                       </td>
                       <td>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={row.amount}
                           onChange={(event) => updatePaymentRow(row.id, 'amount', event.target.value)}
-                          step="0.01"
-                          min="0"
                         />
                       </td>
                       <td>

@@ -602,6 +602,48 @@ const compareCycleKeysAsc = (firstCycleKey, secondCycleKey) => {
   return String(firstCycleKey || '').localeCompare(String(secondCycleKey || ''));
 };
 
+const getCyclePeriodKey = (cycleKey) => {
+  const parsed = parseCycleKey(cycleKey);
+  if (!parsed) {
+    return `raw:${String(cycleKey || '')}`;
+  }
+
+  return `${parsed.kind}-${parsed.startYear}`;
+};
+
+const isSameCyclePeriod = (firstCycleKey, secondCycleKey) => {
+  const first = parseCycleKey(firstCycleKey);
+  const second = parseCycleKey(secondCycleKey);
+
+  if (first && second) {
+    return first.kind === second.kind && first.startYear === second.startYear;
+  }
+
+  return String(firstCycleKey || '') === String(secondCycleKey || '');
+};
+
+const buildCanonicalCycleKey = (cycleKey, zakatMonth) => {
+  const parsed = parseCycleKey(cycleKey);
+  if (!parsed) {
+    return cycleKey;
+  }
+
+  const month = isValidZakatMonth(zakatMonth) ? toNumber(zakatMonth) : parsed.month;
+  return buildCycleKey(parsed.kind, parsed.startYear, month);
+};
+
+const isCycleRowInPeriod = (rowCycleKey, targetCycleKey) =>
+  Boolean(rowCycleKey && targetCycleKey && isSameCyclePeriod(rowCycleKey, targetCycleKey));
+
+const getCarryOverForCyclePeriod = (carryOverByCycle, targetCycleKey) =>
+  Object.entries(carryOverByCycle || {}).reduce((sum, [cycleKey, amount]) => {
+    if (!isCycleRowInPeriod(cycleKey, targetCycleKey)) {
+      return sum;
+    }
+
+    return sum + toNumber(amount);
+  }, 0);
+
 const createWealthRow = (cycleKeyOrOverrides = {}, overrides = {}) => {
   const hasCycleKey = typeof cycleKeyOrOverrides === 'string';
   const rowOverrides = hasCycleKey ? overrides : cycleKeyOrOverrides;
@@ -885,44 +927,50 @@ function App() {
     [selectedCycleKey, language, zakatDay, zakatMonth]
   );
   const cycleOptions = useMemo(() => {
-    const cycleSet = new Set([cycleMeta.key]);
+    const cycleMap = new Map();
+    const addCycleOption = (cycleKey) => {
+      if (!cycleKey) {
+        return;
+      }
+
+      const canonicalKey = buildCanonicalCycleKey(cycleKey, zakatMonth);
+      cycleMap.set(getCyclePeriodKey(canonicalKey), canonicalKey);
+    };
+
+    addCycleOption(cycleMeta.key);
 
     wealthRows.forEach((row) => {
       if (hasMeaningfulWealthRow(row) && typeof row.cycleKey === 'string' && row.cycleKey.trim()) {
-        cycleSet.add(row.cycleKey.trim());
+        addCycleOption(row.cycleKey.trim());
       }
     });
 
     paymentRows.forEach((row) => {
       if (hasMeaningfulPaymentRow(row) && typeof row.cycleKey === 'string' && row.cycleKey.trim()) {
-        cycleSet.add(row.cycleKey.trim());
+        addCycleOption(row.cycleKey.trim());
       }
     });
 
     Object.keys(carryOverByCycle || {}).forEach((cycleKey) => {
       if (cycleKey && toNumber(carryOverByCycle[cycleKey]) !== 0) {
-        cycleSet.add(cycleKey);
+        addCycleOption(cycleKey);
       }
     });
 
     manualCycleKeys.forEach((cycleKey) => {
       if (cycleKey) {
-        cycleSet.add(cycleKey);
+        addCycleOption(cycleKey);
       }
     });
 
-    if (selectedCycleKey && cycleSet.has(selectedCycleKey)) {
-      cycleSet.add(selectedCycleKey);
-    }
-
-    return Array.from(cycleSet)
+    return Array.from(cycleMap.values())
       .filter(Boolean)
       .sort(compareCycleKeysDesc)
       .map((cycleKey) => ({
         key: cycleKey,
         label: buildCycleLabelFromKey(cycleKey, language, zakatDay, zakatMonth)
       }));
-  }, [cycleMeta.key, selectedCycleKey, wealthRows, paymentRows, carryOverByCycle, manualCycleKeys, language, zakatDay, zakatMonth]);
+  }, [cycleMeta.key, wealthRows, paymentRows, carryOverByCycle, manualCycleKeys, language, zakatDay, zakatMonth]);
   const addPreviousCycle = useCallback(() => {
     const currentCycle = parseCycleKey(cycleMeta.key);
     if (!currentCycle) {
@@ -988,7 +1036,8 @@ function App() {
 
     const hasSelectedCycle = cycleOptions.some((option) => option.key === selectedCycleKey);
     if (!hasSelectedCycle) {
-      setSelectedCycleKey(cycleMeta.key);
+      const matchingPeriod = cycleOptions.find((option) => isSameCyclePeriod(option.key, selectedCycleKey));
+      setSelectedCycleKey(matchingPeriod?.key || cycleMeta.key);
     }
   }, [selectedCycleKey, cycleMeta.key, cycleOptions]);
 
@@ -1378,11 +1427,11 @@ function App() {
   );
 
   const wealthRowsForSelectedCycle = useMemo(
-    () => wealthRows.filter((row) => row.cycleKey === selectedCycleKey),
+    () => wealthRows.filter((row) => isCycleRowInPeriod(row.cycleKey, selectedCycleKey)),
     [wealthRows, selectedCycleKey]
   );
   const wealthRowsForActiveCycle = useMemo(
-    () => wealthRows.filter((row) => row.cycleKey === activeCycleKey),
+    () => wealthRows.filter((row) => isCycleRowInPeriod(row.cycleKey, activeCycleKey)),
     [wealthRows, activeCycleKey]
   );
   const wealthComputedRows = useMemo(
@@ -1395,13 +1444,13 @@ function App() {
   );
 
   const paymentsForSelectedCycle = useMemo(
-    () => paymentRows.filter((row) => row.cycleKey === selectedCycleKey),
+    () => paymentRows.filter((row) => isCycleRowInPeriod(row.cycleKey, selectedCycleKey)),
     [paymentRows, selectedCycleKey]
   );
 
   const paymentRateTargets = useMemo(() => {
     const relevantRows = paymentRows.filter(
-      (row) => row.cycleKey === selectedCycleKey || row.cycleKey === activeCycleKey
+      (row) => isCycleRowInPeriod(row.cycleKey, selectedCycleKey) || isCycleRowInPeriod(row.cycleKey, activeCycleKey)
     );
     const uniqueDates = Array.from(new Set(relevantRows.map((row) => normalizePaymentDate(row.date))));
     return uniqueDates.map((dateText) => ({
@@ -1556,14 +1605,21 @@ function App() {
     [paymentRows, activeCycleKey, normalizedBaseCurrency, paymentDateRates, rates, convertCurrencyAmountWithRates]
   );
 
-  const carryInAmount = toNumber(carryOverByCycle[selectedCycleKey]);
+  const carryInAmount = getCarryOverForCyclePeriod(carryOverByCycle, selectedCycleKey);
   const totalDutyIncludingCarry = zakatDutyCurrentYear + carryInAmount;
   const remainingAmount = totalDutyIncludingCarry - totalPaidCurrentCycle;
-  const carryInAmountForActiveCycle = toNumber(carryOverByCycle[activeCycleKey]);
+  const carryInAmountForActiveCycle = getCarryOverForCyclePeriod(carryOverByCycle, activeCycleKey);
   const remainingAmountForActiveCycle = zakatDutyForActiveCycle + carryInAmountForActiveCycle - totalPaidInActiveCycle;
 
   useEffect(() => {
     if (cycleMeta.key === activeCycleKey) {
+      return;
+    }
+
+    if (isSameCyclePeriod(cycleMeta.key, activeCycleKey)) {
+      setYearNote('');
+      setSelectedCycleKey((previous) => (isSameCyclePeriod(previous, activeCycleKey) ? cycleMeta.key : previous));
+      setActiveCycleKey(cycleMeta.key);
       return;
     }
 
@@ -1574,7 +1630,7 @@ function App() {
       const carryForward = Math.max(0, remainingAmountForActiveCycle);
       if (carryForward > 0) {
         setCarryOverByCycle((previous) => {
-          const existing = toNumber(previous[cycleMeta.key]);
+          const existing = getCarryOverForCyclePeriod(previous, cycleMeta.key);
           if (existing > 0) {
             return previous;
           }
@@ -1798,7 +1854,7 @@ function App() {
 
       if (parsed.wealthRows.length > 0) {
         setWealthRows((previous) => {
-          const otherCycles = previous.filter((row) => row.cycleKey !== selectedCycleKey);
+          const otherCycles = previous.filter((row) => !isCycleRowInPeriod(row.cycleKey, selectedCycleKey));
           const importedRows = parsed.wealthRows.map((row) =>
             createWealthRow(selectedCycleKey, {
               type: row.type,
@@ -1812,7 +1868,7 @@ function App() {
 
       if (parsed.paymentRows.length > 0) {
         setPaymentRows((previous) => {
-          const otherCycles = previous.filter((row) => row.cycleKey !== selectedCycleKey);
+          const otherCycles = previous.filter((row) => !isCycleRowInPeriod(row.cycleKey, selectedCycleKey));
           const importedRows = parsed.paymentRows.map((row) =>
             createPaymentRow(selectedCycleKey, {
               paidTo: row.paidTo,

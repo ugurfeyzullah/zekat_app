@@ -13,6 +13,8 @@ const CLOUD_SYNC_DEBOUNCE_MS = 1500;
 const ZAKAT_RATE = 0.025;
 const NISAB_GOLD_GRAMS = 87.48;
 const TROY_OUNCE_GRAMS = 31.1034768;
+const DEFAULT_GOLD_USD_PER_GRAM = 65;
+const DEFAULT_SILVER_USD_PER_GRAM = 0.8;
 const GOLD24_CURRENCY_CODE = 'XAU';
 const SILVER_CURRENCY_CODE = 'XAG';
 
@@ -662,6 +664,17 @@ const getCarryOverForCyclePeriod = (carryOverByCycle, targetCycleKey) =>
 
     return sum + toNumber(amount);
   }, 0);
+
+const convertSilverGramsToGoldGrams = (silverGrams, activeRates) => {
+  const silverPerGoldOunce = toNumber(activeRates?.[SILVER_CURRENCY_CODE]);
+  if (silverPerGoldOunce > 0) {
+    return silverGrams / silverPerGoldOunce;
+  }
+
+  const usdPerGoldOunce = toNumber(activeRates?.USD);
+  const goldUsdPerGram = usdPerGoldOunce > 0 ? usdPerGoldOunce / TROY_OUNCE_GRAMS : DEFAULT_GOLD_USD_PER_GRAM;
+  return silverGrams * (DEFAULT_SILVER_USD_PER_GRAM / goldUsdPerGram);
+};
 
 const createWealthRow = (cycleKeyOrOverrides = {}, overrides = {}) => {
   const hasCycleKey = typeof cycleKeyOrOverrides === 'string';
@@ -1322,7 +1335,12 @@ function App() {
           return amountValue;
         }
 
-        const fallbackUsdPerGram = currencyCode === GOLD24_CURRENCY_CODE ? 65 : 0.8;
+        if (normalizedBaseCurrency === GOLD24_CURRENCY_CODE && currencyCode === SILVER_CURRENCY_CODE) {
+          return convertSilverGramsToGoldGrams(amountValue, activeRates);
+        }
+
+        const fallbackUsdPerGram =
+          currencyCode === GOLD24_CURRENCY_CODE ? DEFAULT_GOLD_USD_PER_GRAM : DEFAULT_SILVER_USD_PER_GRAM;
         const commodityCode = currencyCode === GOLD24_CURRENCY_CODE ? GOLD24_CURRENCY_CODE : SILVER_CURRENCY_CODE;
         const commodityRate = toNumber(activeRates?.[commodityCode]);
         if (commodityRate > 0) {
@@ -1373,6 +1391,10 @@ function App() {
         return 1;
       }
 
+      if (metalCode === SILVER_CURRENCY_CODE && normalizedBaseCurrency === GOLD24_CURRENCY_CODE) {
+        return convertSilverGramsToGoldGrams(1, rates);
+      }
+
       const commodityRate = toNumber(rates?.[metalCode]);
       if (commodityRate > 0) {
         const oneOunceInBase = 1 / commodityRate;
@@ -1394,11 +1416,11 @@ function App() {
   );
 
   const goldPricePerGramInBase = useMemo(
-    () => getMetalPricePerGramInBase(GOLD24_CURRENCY_CODE, 65),
+    () => getMetalPricePerGramInBase(GOLD24_CURRENCY_CODE, DEFAULT_GOLD_USD_PER_GRAM),
     [getMetalPricePerGramInBase]
   );
   const silverPricePerGramInBase = useMemo(
-    () => getMetalPricePerGramInBase(SILVER_CURRENCY_CODE, 0.8),
+    () => getMetalPricePerGramInBase(SILVER_CURRENCY_CODE, DEFAULT_SILVER_USD_PER_GRAM),
     [getMetalPricePerGramInBase]
   );
   const getWealthTypeLabel = useCallback(

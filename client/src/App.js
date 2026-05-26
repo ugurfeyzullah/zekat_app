@@ -86,6 +86,7 @@ const TRANSLATIONS = {
     language: 'Language',
     baseCurrency: 'Base currency',
     zakatMonth: 'Zakat month (Hijri)',
+    zakatDay: 'Zakat day (Hijri)',
     refreshRates: 'Refresh Rates',
     refreshing: 'Refreshing...',
     importExcel: 'Import Excel (.xlsx / .xls / .csv)',
@@ -174,6 +175,7 @@ const TRANSLATIONS = {
     language: 'Dil',
     baseCurrency: 'Temel para birimi',
     zakatMonth: 'Zekat ayı (Hicri)',
+    zakatDay: 'Zekat günü (Hicri)',
     refreshRates: 'Kurları Yenile',
     refreshing: 'Yenileniyor...',
     importExcel: 'Excel içe aktar (.xlsx / .xls / .csv)',
@@ -262,6 +264,7 @@ const TRANSLATIONS = {
     language: 'اللغة',
     baseCurrency: 'العملة الأساسية',
     zakatMonth: 'شهر الزكاة (هجري)',
+    zakatDay: 'يوم الزكاة (هجري)',
     refreshRates: 'تحديث الأسعار',
     refreshing: 'جارٍ التحديث...',
     importExcel: 'استيراد إكسل (.xlsx / .xls / .csv)',
@@ -378,18 +381,20 @@ const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const getHijriInfo = () => {
   try {
     const parts = new Intl.DateTimeFormat('en-u-ca-islamic', {
+      day: 'numeric',
       month: 'numeric',
       year: 'numeric'
     }).formatToParts(new Date());
 
+    const day = parseInt(parts.find((part) => part.type === 'day')?.value || '', 10);
     const month = parseInt(parts.find((part) => part.type === 'month')?.value || '', 10);
     const year = parseInt(parts.find((part) => part.type === 'year')?.value || '', 10);
 
-    if (!Number.isFinite(month) || !Number.isFinite(year)) {
+    if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year)) {
       return null;
     }
 
-    return { month, year };
+    return { day, month, year };
   } catch (error) {
     return null;
   }
@@ -480,12 +485,13 @@ const getCycleGregorianYearLabel = (parsedCycle) => {
   return String(julianDayToGregorian(islamicToJulianDay(parsedCycle.startYear, parsedCycle.month, 1)).year);
 };
 
-const buildCycleMeta = (zakatMonth, language = 'en') => {
+const buildCycleMeta = (zakatMonth, zakatDay = 1, language = 'en') => {
   const translations = TRANSLATIONS[language] || TRANSLATIONS.en;
   const monthLabel = getMonthName(zakatMonth, language);
   const hijri = getHijriInfo();
   if (hijri?.month && hijri?.year) {
-    const startYear = hijri.month >= zakatMonth ? hijri.year : hijri.year - 1;
+    const hasReachedZakatDate = hijri.month > zakatMonth || (hijri.month === zakatMonth && hijri.day >= zakatDay);
+    const startYear = hasReachedZakatDate ? hijri.year : hijri.year - 1;
     return {
       key: buildCycleKey('H', startYear, zakatMonth),
       label: `${monthLabel} ${startYear} / ${startYear + 1} (${translations.cycleSuffixes.hijri})`
@@ -493,7 +499,10 @@ const buildCycleMeta = (zakatMonth, language = 'en') => {
   }
 
   const now = new Date();
-  const startYear = now.getMonth() + 1 >= zakatMonth ? now.getFullYear() : now.getFullYear() - 1;
+  const currentMonth = now.getMonth() + 1;
+  const currentDay = now.getDate();
+  const hasReachedFallbackDate = currentMonth > zakatMonth || (currentMonth === zakatMonth && currentDay >= zakatDay);
+  const startYear = hasReachedFallbackDate ? now.getFullYear() : now.getFullYear() - 1;
   return {
     key: buildCycleKey('G', startYear, zakatMonth),
     label: `${monthLabel} ${startYear} / ${startYear + 1} (${translations.cycleSuffixes.fallback})`
@@ -556,6 +565,33 @@ const compareCycleKeysDesc = (firstCycleKey, secondCycleKey) => {
   }
 
   return String(secondCycleKey || '').localeCompare(String(firstCycleKey || ''));
+};
+
+const compareCycleKeysAsc = (firstCycleKey, secondCycleKey) => {
+  const first = parseCycleKey(firstCycleKey);
+  const second = parseCycleKey(secondCycleKey);
+
+  if (first && second) {
+    if (first.startYear !== second.startYear) {
+      return first.startYear - second.startYear;
+    }
+    if (first.month !== second.month) {
+      return first.month - second.month;
+    }
+    if (first.kind !== second.kind) {
+      return first.kind === 'H' ? -1 : 1;
+    }
+    return 0;
+  }
+
+  if (first && !second) {
+    return 1;
+  }
+  if (!first && second) {
+    return -1;
+  }
+
+  return String(firstCycleKey || '').localeCompare(String(secondCycleKey || ''));
 };
 
 const createWealthRow = (cycleKeyOrOverrides = {}, overrides = {}) => {
@@ -663,13 +699,18 @@ const isValidZakatMonth = (value) => {
   const numeric = toNumber(value);
   return numeric >= 1 && numeric <= 12;
 };
+const isValidZakatDay = (value) => {
+  const numeric = toNumber(value);
+  return numeric >= 1 && numeric <= 30;
+};
 
 const normalizeBoardState = (state) => {
   const source = isPlainObject(state) ? state : {};
   const language = normalizeLanguage(source.language);
   const zakatMonth = isValidZakatMonth(source.zakatMonth) ? toNumber(source.zakatMonth) : 9;
+  const zakatDay = isValidZakatDay(source.zakatDay) ? toNumber(source.zakatDay) : 1;
   const baseCurrency = normalizeBaseCurrency(source.baseCurrency);
-  const fallbackCycleKey = buildCycleMeta(zakatMonth, language).key;
+  const fallbackCycleKey = buildCycleMeta(zakatMonth, zakatDay, language).key;
   const activeCycleKey =
     typeof source.activeCycleKey === 'string' && source.activeCycleKey.trim()
       ? source.activeCycleKey.trim()
@@ -705,6 +746,7 @@ const normalizeBoardState = (state) => {
     language,
     baseCurrency,
     zakatMonth,
+    zakatDay,
     rates: source.rates || null,
     rateSource: source.rateSource || '',
     lastRateUpdate: source.lastRateUpdate || '',
@@ -724,8 +766,8 @@ function App() {
   const normalizedSavedState = useMemo(() => normalizeBoardState(savedState), [savedState]);
   const initialCloudSession = useMemo(() => cloudSyncService.getSession(), []);
   const initialCycleMeta = useMemo(
-    () => buildCycleMeta(normalizedSavedState.zakatMonth, normalizedSavedState.language),
-    [normalizedSavedState.language, normalizedSavedState.zakatMonth]
+    () => buildCycleMeta(normalizedSavedState.zakatMonth, normalizedSavedState.zakatDay, normalizedSavedState.language),
+    [normalizedSavedState.language, normalizedSavedState.zakatMonth, normalizedSavedState.zakatDay]
   );
 
   const [activeTab, setActiveTab] = useState(normalizedSavedState.activeTab);
@@ -733,6 +775,7 @@ function App() {
   const [language, setLanguage] = useState(normalizedSavedState.language);
   const [baseCurrency, setBaseCurrency] = useState(normalizedSavedState.baseCurrency);
   const [zakatMonth, setZakatMonth] = useState(normalizedSavedState.zakatMonth);
+  const [zakatDay, setZakatDay] = useState(normalizedSavedState.zakatDay);
   const [rates, setRates] = useState(normalizedSavedState.rates);
   const [rateSource, setRateSource] = useState(normalizedSavedState.rateSource);
   const [lastRateUpdate, setLastRateUpdate] = useState(normalizedSavedState.lastRateUpdate);
@@ -806,7 +849,7 @@ function App() {
     () => getCurrencyDisplayLabel(normalizedBaseCurrency),
     [getCurrencyDisplayLabel, normalizedBaseCurrency]
   );
-  const cycleMeta = useMemo(() => buildCycleMeta(zakatMonth, language), [language, zakatMonth]);
+  const cycleMeta = useMemo(() => buildCycleMeta(zakatMonth, zakatDay, language), [language, zakatMonth, zakatDay]);
   const zakatYearLabel = t.zakatYear || TRANSLATIONS.en.zakatYear;
   const viewEditCycleLabel = t.viewEditCycle || TRANSLATIONS.en.viewEditCycle;
   const selectedCycleLabel = useMemo(
@@ -855,6 +898,7 @@ function App() {
       language,
       baseCurrency: normalizedBaseCurrency,
       zakatMonth,
+      zakatDay,
       rates,
       rateSource,
       lastRateUpdate,
@@ -869,6 +913,7 @@ function App() {
       language,
       normalizedBaseCurrency,
       zakatMonth,
+      zakatDay,
       rates,
       rateSource,
       lastRateUpdate,
@@ -911,6 +956,7 @@ function App() {
     setLanguage(normalizedState.language);
     setBaseCurrency(normalizedState.baseCurrency);
     setZakatMonth(normalizedState.zakatMonth);
+    setZakatDay(normalizedState.zakatDay);
     setRates(normalizedState.rates);
     setRateSource(normalizedState.rateSource);
     setLastRateUpdate(normalizedState.lastRateUpdate);
@@ -1470,23 +1516,31 @@ function App() {
       return;
     }
 
-    const carryForward = Math.max(0, remainingAmountForActiveCycle);
-    if (carryForward > 0) {
-      setCarryOverByCycle((previous) => {
-        const existing = toNumber(previous[cycleMeta.key]);
-        if (existing > 0) {
-          return previous;
-        }
-        return {
-          ...previous,
-          [cycleMeta.key]: carryForward
-        };
-      });
-      setYearNote(t.yearRolledCarry(carryForward, baseCurrencyDisplayLabel));
+    const cycleDirection = compareCycleKeysAsc(cycleMeta.key, activeCycleKey);
+    const isForwardRollover = cycleDirection > 0;
+
+    if (isForwardRollover) {
+      const carryForward = Math.max(0, remainingAmountForActiveCycle);
+      if (carryForward > 0) {
+        setCarryOverByCycle((previous) => {
+          const existing = toNumber(previous[cycleMeta.key]);
+          if (existing > 0) {
+            return previous;
+          }
+          return {
+            ...previous,
+            [cycleMeta.key]: carryForward
+          };
+        });
+        setYearNote(t.yearRolledCarry(carryForward, baseCurrencyDisplayLabel));
+      } else {
+        setYearNote(t.yearRolledNoCarry);
+      }
     } else {
-      setYearNote(t.yearRolledNoCarry);
+      setYearNote('');
     }
 
+    setSelectedCycleKey((previous) => (previous === activeCycleKey ? cycleMeta.key : previous));
     setActiveCycleKey(cycleMeta.key);
   }, [cycleMeta.key, activeCycleKey, remainingAmountForActiveCycle, baseCurrencyDisplayLabel, t]);
 
@@ -1921,6 +1975,17 @@ function App() {
                             </option>
                           );
                         })}
+                      </select>
+                    </div>
+
+                    <div className="field">
+                      <label>{t.zakatDay}</label>
+                      <select value={zakatDay} onChange={(event) => setZakatDay(Number(event.target.value))}>
+                        {Array.from({ length: 30 }, (_, index) => index + 1).map((dayNumber) => (
+                          <option key={dayNumber} value={dayNumber}>
+                            {dayNumber}
+                          </option>
+                        ))}
                       </select>
                     </div>
 

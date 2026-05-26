@@ -445,6 +445,41 @@ const getWealthType = (typeKey) =>
 
 const buildCycleKey = (kind, startYear, month) => `${kind}-${startYear}-${month}`;
 
+const islamicToJulianDay = (year, month, day = 1) =>
+  day +
+  Math.ceil(29.5 * (month - 1)) +
+  (year - 1) * 354 +
+  Math.floor((3 + 11 * year) / 30) +
+  1948438.5;
+
+const julianDayToGregorian = (julianDay) => {
+  let value = Math.floor(julianDay + 0.5) + 68569;
+  const century = Math.floor((4 * value) / 146097);
+  value -= Math.floor((146097 * century + 3) / 4);
+
+  const yearPart = Math.floor((4000 * (value + 1)) / 1461001);
+  value = value - Math.floor((1461 * yearPart) / 4) + 31;
+
+  const monthPart = Math.floor((80 * value) / 2447);
+  value = Math.floor(monthPart / 11);
+
+  return {
+    year: 100 * (century - 49) + yearPart + value
+  };
+};
+
+const getCycleGregorianYearLabel = (parsedCycle) => {
+  if (!parsedCycle) {
+    return '';
+  }
+
+  if (parsedCycle.kind === 'G') {
+    return String(parsedCycle.startYear);
+  }
+
+  return String(julianDayToGregorian(islamicToJulianDay(parsedCycle.startYear, parsedCycle.month, 1)).year);
+};
+
 const buildCycleMeta = (zakatMonth, language = 'en') => {
   const translations = TRANSLATIONS[language] || TRANSLATIONS.en;
   const monthLabel = getMonthName(zakatMonth, language);
@@ -492,7 +527,8 @@ const buildCycleLabelFromKey = (cycleKey, language = 'en') => {
 
   const translations = TRANSLATIONS[language] || TRANSLATIONS.en;
   const suffix = parsed.kind === 'H' ? translations.cycleSuffixes.hijri : translations.cycleSuffixes.fallback;
-  return `${parsed.startYear} / ${parsed.startYear + 1} (${suffix})`;
+  const gregorianYearLabel = getCycleGregorianYearLabel(parsed);
+  return `${parsed.startYear} / ${parsed.startYear + 1} (${suffix}) (${gregorianYearLabel})`;
 };
 
 const compareCycleKeysDesc = (firstCycleKey, secondCycleKey) => {
@@ -1745,15 +1781,27 @@ function App() {
       </header>
 
       <nav className="tab-nav">
-        <button className={`tab-btn ${activeTab === 'zakat' ? 'active' : ''}`} onClick={() => setActiveTab('zakat')}>
-          {t.tabZakat}
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
-          onClick={() => setActiveTab('calendar')}
-        >
-          {t.tabCalendar}
-        </button>
+        <div className="tab-nav-buttons">
+          <button className={`tab-btn ${activeTab === 'zakat' ? 'active' : ''}`} onClick={() => setActiveTab('zakat')}>
+            {t.tabZakat}
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
+            onClick={() => setActiveTab('calendar')}
+          >
+            {t.tabCalendar}
+          </button>
+        </div>
+        <div className="nav-cycle-select">
+          <label>{zakatYearLabel}</label>
+          <select value={selectedCycleKey} onChange={(event) => setSelectedCycleKey(event.target.value)}>
+            {cycleOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </nav>
 
       {isQuickPanelOpen && (
@@ -1921,22 +1969,6 @@ function App() {
 
       {activeTab === 'zakat' && (
         <>
-          <section className="panel year-panel">
-            <div className="panel-header-row year-panel-row">
-              <h2>{zakatYearLabel}</h2>
-              <div className="cycle-select-inline year-select-inline">
-                <label>{viewEditCycleLabel}</label>
-                <select value={selectedCycleKey} onChange={(event) => setSelectedCycleKey(event.target.value)}>
-                  {cycleOptions.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </section>
-
           <section className="panel">
             <div className="panel-header-row">
               <h2>{t.wealthEntries}</h2>

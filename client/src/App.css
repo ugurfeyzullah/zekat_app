@@ -95,8 +95,35 @@ body {
 
 .tab-nav {
   display: flex;
-  gap: 0.65rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.85rem;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.tab-nav-buttons {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.nav-cycle-select {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-left: auto;
+  min-width: min(32rem, 100%);
+}
+
+.nav-cycle-select label {
+  color: #334155;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.nav-cycle-select select {
+  min-width: min(22rem, 100%);
 }
 
 .tab-btn {
@@ -292,41 +319,6 @@ select:focus {
   margin-bottom: 0.75rem;
 }
 
-.panel-header-actions {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-
-.cycle-select-inline {
-  min-width: 15rem;
-}
-
-.cycle-select-inline label {
-  display: block;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #475569;
-  margin-bottom: 0.3rem;
-}
-
-.year-panel {
-  background: linear-gradient(180deg, #f8fffd 0%, #ffffff 100%);
-}
-
-.year-panel-row {
-  margin-bottom: 0;
-}
-
-.year-panel-row h2 {
-  margin-bottom: 0;
-}
-
-.year-select-inline {
-  min-width: min(22rem, 100%);
-}
-
 .table-wrap {
   overflow-x: auto;
   overflow-y: auto;
@@ -485,16 +477,22 @@ td.missing {
   flex-direction: row-reverse;
 }
 
+.simple-page.rtl .tab-nav-buttons,
+.simple-page.rtl .nav-cycle-select {
+  flex-direction: row-reverse;
+}
+
+.simple-page.rtl .nav-cycle-select {
+  margin-left: 0;
+  margin-right: auto;
+}
+
 .simple-page.rtl .header-top {
   flex-direction: row-reverse;
 }
 
 .simple-page.rtl .header-actions,
 .simple-page.rtl .panel-header-row {
-  flex-direction: row-reverse;
-}
-
-.simple-page.rtl .panel-header-actions {
   flex-direction: row-reverse;
 }
 
@@ -538,18 +536,19 @@ td.missing {
     align-items: flex-start;
   }
 
-  .panel-header-actions {
+  .nav-cycle-select {
     width: 100%;
-    align-items: stretch;
+    margin-left: 0;
+    align-items: center;
   }
 
-  .cycle-select-inline {
-    width: 100%;
+  .nav-cycle-select select {
+    flex: 1 1 auto;
     min-width: 0;
   }
 
   .tab-nav {
-    flex-wrap: wrap;
+    align-items: stretch;
   }
 
   .header-top {

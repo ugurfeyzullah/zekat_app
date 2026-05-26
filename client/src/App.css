@@ -311,6 +311,22 @@ select:focus {
   margin-bottom: 0.3rem;
 }
 
+.year-panel {
+  background: linear-gradient(180deg, #f8fffd 0%, #ffffff 100%);
+}
+
+.year-panel-row {
+  margin-bottom: 0;
+}
+
+.year-panel-row h2 {
+  margin-bottom: 0;
+}
+
+.year-select-inline {
+  min-width: min(22rem, 100%);
+}
+
 .table-wrap {
   overflow-x: auto;
   overflow-y: auto;
